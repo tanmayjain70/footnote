@@ -3,9 +3,9 @@
 A handover document. A new session should be able to read this and continue
 without re-deriving anything. Update it in the same commit as the work.
 
-_Last updated: 2026-09-13, at the end of the initial build._
+_Last updated: 2026-09-13, after the first deployment._
 
-## Status: milestone 1 built and verified locally; not yet published
+## Status: milestone 1 built, tested, and deployed
 
 | Area | State |
 |---|---|
@@ -21,13 +21,14 @@ _Last updated: 2026-09-13, at the end of the initial build._
 | Evaluation harness (retrieval and end-to-end runs, golden set, from-feedback) | Done |
 | Lease generator, golden questions, field registry, three committed samples | Done. 48 leases, 524 pages, 1,728 chunks, 174 + 12 golden questions |
 | Demo seed | Done; runs in 3m48s with fastembed; idempotent |
-| **Whole API suite** | **311 passed, 96% line coverage**, 5m43s against footnote_test |
+| **Whole API suite** | **328 passed, 96% line coverage**, about six minutes against footnote_test |
 | Smoke test against a live seeded server | **28 of 28** (`scripts/smoke-test.ps1`) |
 | Web: all seven pages | Done, typechecks and builds; driven in a real browser (Playwright script at `../portfolio-shots/scripts/footnote.js`): sign-in, documents, document detail, a cited answer, a refusal, register, evals, usage, viewer restrictions — clean |
-| CI, Render blueprint, Docker, bootstrap scripts | Written, **not exercised** (no push, no build, no deploy yet) |
+| CI, Docker image, Render blueprint, bootstrap scripts | Exercised: CI runs on every push, the image builds on Render, the blueprint and `deploy.py` both provision the live demo |
 | Docs: README, brief, transcript, architecture, deployment, CONTRIBUTING | Done |
-| Git | Repository initialised; commit history to be built in feature-sized commits |
-| GitHub, Render, Neon | **Not done** — outward-facing; needs the owner's go-ahead and accounts |
+| Git | 26 commits, feature-sized, authored by Tanmay Jain alone |
+| GitHub | **Private** repository at `tanmayjain70/footnote`, pushed |
+| Deployment | **Live.** Web <https://footnote-web-xgu5.onrender.com>, API <https://footnote-api-uuyv.onrender.com>, database on Neon (`footnote`, pgvector 0.8.0). Provisioned by `scripts/deploy.py`; the generated connection strings are in `api/.env.production.local`, gitignored |
 
 ## Measured numbers worth quoting
 
@@ -110,10 +111,28 @@ real ceiling belongs in front of the application.
   measured number from the harness, not a unit-test assertion.
 - **One jobs table, `FOR UPDATE SKIP LOCKED`**, for ingest, extraction and
   end-to-end evaluation runs. No Celery, no Redis.
-- **The seed runs behind the server** in the container.
+- **The seed runs behind the server, on a thread of the same process.** A
+  second process would hold a second copy of the embedding model, and two do
+  not fit in 512 MB.
 - **Daily budget enforced before the call**, as a 429; may overshoot by one call.
 - **Filename-derived titles are prettified** ("irwell-bank-house" → "Irwell
   Bank House"); anything with its own capitals or digits is left as typed.
+
+## What the first deployment taught us
+
+Three faults that only a 512 MB instance could show, each fixed with a test:
+
+- **Two copies of the embedding model.** The container entrypoint seeded in a
+  second process, so two processes each held ~270 MB of model against a 512 MB
+  limit. Render killed the pair five times over. The application seeds on a
+  thread now: one process, one model, ~270 MB serving and ~400 MB seeding.
+- **Nothing swept up after the kills.** `requeue_stranded_jobs` existed and
+  nothing called it, so eight leases sat in `running` for ever. The worker now
+  sweeps at startup and every five minutes.
+- **A half-finished seed looked finished.** The seeder skipped when *any*
+  document existed, so the demo would have stayed at eight leases of
+  forty-eight. Each stage now skips only its own completed work, and an
+  unfinished seed carries on.
 
 ## Not verified
 

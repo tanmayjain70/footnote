@@ -105,9 +105,12 @@ configured.
 
 ## Live demo
 
-The demo deploys from [`render.yaml`](render.yaml) to Render's free tier with
-the database on Neon, in about twenty minutes:
-[docs/deployment.md](docs/deployment.md).
+**<https://footnote-web-xgu5.onrender.com>**
+
+Deployed from [`scripts/deploy.py`](scripts/deploy.py) to Render's free tier
+with the database on Neon; the blueprint in [`render.yaml`](render.yaml)
+describes the same two services for anyone importing it by hand. Twenty
+minutes, no cost: [docs/deployment.md](docs/deployment.md).
 
 > Hosted on a free tier that sleeps when idle, so the **first sign-in can take
 > up to a minute** while the server wakes. The login page says so while it
