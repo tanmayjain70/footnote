@@ -1,12 +1,13 @@
 #!/bin/sh
-# Container entrypoint: migrate, serve, then seed.
+# Container entrypoint: migrate, then serve.
 #
-# The seed runs behind the server rather than before it. Ingesting the demo
-# corpus means embedding a few thousand passages on a small CPU, which takes
-# minutes; a platform health check that waits for that would declare the
-# container dead. So uvicorn starts first and the seeder fills the database
-# while the API is already answering. Every later boot finds the data present
-# and the seeder exits in a second.
+# Seeding is NOT started here. It used to be: a second `python -m app.demo.seed`
+# in the background, waiting for the port. That loads a second copy of the
+# embedding model -- about 270 MB resident -- and on a 512 MB instance the pair
+# is killed before either finishes, over and over. The application seeds itself
+# on a thread instead (DEMO_MODE, see app/main.py), so one process holds one
+# model and the seeding shares it with the requests it is filling the database
+# for.
 #
 # `set -e` matters: without it a failed migration would be logged and the API
 # would start anyway against a stale schema, which is worse than not starting.
@@ -16,22 +17,6 @@ echo "==> Running database migrations"
 alembic upgrade head
 
 PORT="${PORT:-8000}"
-
-if [ "${DEMO_MODE}" = "true" ]; then
-    (
-        echo "==> Waiting for the API before seeding"
-        tries=0
-        until python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/api/v1/healthz', timeout=2)" >/dev/null 2>&1; do
-            tries=$((tries + 1))
-            if [ "$tries" -gt 60 ]; then
-                echo "==> The API did not come up; seeding anyway"
-                break
-            fi
-            sleep 2
-        done
-        python -m app.demo.seed || echo "==> Seeding skipped or failed; the API is still up"
-    ) &
-fi
 
 echo "==> Starting API on port ${PORT}"
 # exec so uvicorn becomes PID 1 and receives SIGTERM directly. Without it the

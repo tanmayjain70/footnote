@@ -72,15 +72,22 @@ model's size, not a measurement on Render; if the instance restarts under
 memory pressure, the first thing to try is the next plan up, not a smaller
 model — the vectors in the database are tied to this one.
 
-### Seeding runs behind the server
+### Seeding runs behind the server, in the same process
 
-With `DEMO_MODE=true` the entrypoint starts uvicorn first and runs the seeder
-in the background once the port answers. Embedding 48 leases — about 1,700
-passages — takes a few minutes on a small CPU; a health check that waited for
-it would declare the container dead. So for the first few minutes after the
-first deploy the API is up, sign-in works, and the Documents page shows leases
-arriving one by one. Every boot after that finds the data present and the
-seeder exits in a second. `python -m app.demo.seed --force` rebuilds on demand.
+With `DEMO_MODE=true` the application starts a seeding thread once it is
+serving. Embedding 48 leases — about 1,700 passages — takes a few minutes on a
+small CPU; a health check that waited for it would declare the container dead.
+So for the first few minutes after the first deploy the API is up, sign-in
+works, and the Documents page shows leases arriving. Every boot after that
+finds the data present and the thread returns immediately.
+`python -m app.demo.seed --force` rebuilds on demand.
+
+**A thread, not a second process**, and on a small instance that is the whole
+difference. The container entrypoint used to start `python -m app.demo.seed`
+in the background, which loads its own copy of the embedding model: about
+270 MB resident, twice, against a 512 MB limit. Render killed it, restarted it,
+and killed it again. One process holding one model serves in about 270 MB and
+seeds in roughly 400 MB, which fits.
 
 ## 3. The frontend
 

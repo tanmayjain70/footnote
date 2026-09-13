@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
@@ -51,11 +52,36 @@ async def lifespan(app: FastAPI):
             worker_module.start_worker()
             logger.info("ingestion worker started")
 
+    # The demo seeds itself, in this process, on a thread.
+    #
+    # It used to be a second process started by the container entrypoint, and
+    # on a 512 MB instance that is fatal: the embedding model is about 270 MB
+    # resident, so two processes holding one each are killed before either
+    # finishes. One process, one model, and the seeding shares it with the
+    # requests it is filling the database for.
+    if settings.demo_mode:
+        threading.Thread(target=_seed_demo, name="seed", daemon=True).start()
+
     yield
 
     if worker_module is not None:
         with suppress(Exception):
             worker_module.stop_worker()
+
+
+def _seed_demo() -> None:
+    """Fill an empty demo database, behind the server that is already answering.
+
+    Idempotent and cheap when there is nothing to do: the seeder checks for
+    documents first and returns. A failure here must never take the API down
+    with it -- an empty demo is a poor demo, but a dead one is worse.
+    """
+    try:
+        from app.demo.seed import seed
+
+        seed()
+    except Exception:
+        logger.exception("seeding the demo failed; the API is still up")
 
 
 app = FastAPI(

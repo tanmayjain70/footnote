@@ -381,8 +381,16 @@ def test_write_samples_writes_three_distinct_leases_and_a_readme(tmp_path: Path)
 
 def test_the_committed_samples_are_what_the_generator_produces():
     """Regenerating must be a no-op; otherwise the committed PDFs and the
-    README drift from the code that claims to have produced them."""
+    README drift from the code that claims to have produced them.
+
+    Compared as pages of text rather than as bytes. The same ReportLab
+    document is not the same file on two machines -- object offsets in the
+    cross-reference table move with the library version -- and a test that
+    fails on a different Python is testing the toolchain, not the lease.
+    """
     for _, spec in sample_specs():
         committed = SAMPLES_DIR / spec.filename
         assert committed.exists(), f"run python -m app.demo.leases to write {committed.name}"
-        assert committed.read_bytes() == render_lease_pdf(spec), committed.name
+        assert extract_pages(committed.read_bytes()) == extract_pages(
+            render_lease_pdf(spec)
+        ), f"{committed.name} is not what the generator writes now"
