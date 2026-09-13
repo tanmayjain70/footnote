@@ -755,3 +755,33 @@ def test_a_search_for_a_wildcard_is_a_search_for_that_character(
 
     assert everything["total"] == 1, "a lone % is a search for a per-cent sign, not for everything"
     assert [item["title"] for item in literal["items"]] == ["100% Let, Whitworth Court"]
+
+
+def test_the_worker_sweeps_for_stranded_jobs_when_it_starts(upload, db: Session):
+    """The recovery function is only worth having if something calls it. The
+    first deployment proved that: a container killed for memory left eight
+    leases half-ingested and nothing ever picked them up."""
+    doc = upload("admin", "city", LEASE_PAGES)
+    document = db.get(Document, uuid.UUID(doc["id"]))
+    (job,) = _jobs(db, document.id)
+    job.status = JobStatus.RUNNING
+    job.claimed_by = "a-container-that-was-killed:1"
+    job.claimed_at = datetime.now(UTC) - timedelta(minutes=ingestion.STRANDED_AFTER_MINUTES + 5)
+    document.status = DocumentStatus.PROCESSING
+    db.commit()
+
+    worker = ingestion.Worker()
+    worker.start()
+    try:
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            db.expire_all()
+            if db.get(Document, document.id).status == DocumentStatus.READY:
+                break
+            time.sleep(0.5)
+    finally:
+        worker.stop(timeout=10)
+
+    db.expire_all()
+    assert db.get(Document, document.id).status == DocumentStatus.READY
+    assert db.get(Job, job.id).status == JobStatus.DONE

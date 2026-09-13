@@ -20,6 +20,7 @@ import os
 import re
 import socket
 import threading
+import time
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -42,6 +43,15 @@ logger = logging.getLogger(__name__)
 #: Chunks embedded per provider call. bge-small is happiest around this size,
 #: and it bounds how much work a failure in the embed stage throws away.
 EMBED_BATCH = 32
+
+#: How long a claimed job may go without finishing before it is assumed
+#: orphaned. Longer than any real job here takes -- a lease is seconds -- and
+#: short enough that a killed container does not leave the queue stuck for an
+#: afternoon.
+STRANDED_AFTER_MINUTES = 15
+
+#: How often the worker looks for them.
+SWEEP_EVERY_SECONDS = 300
 
 
 def _now() -> datetime:
@@ -496,6 +506,7 @@ class Worker:
         self.worker_id = _worker_id()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._last_sweep = 0.0
 
     @property
     def alive(self) -> bool:
@@ -516,9 +527,30 @@ class Worker:
             self._thread.join(timeout)
             self._thread = None
 
+    def _sweep(self) -> None:
+        """Offer stranded jobs again, at startup and every few minutes.
+
+        Without this the recovery function is never called and a job whose
+        worker was killed stays `running` for ever -- which is exactly what
+        happened the first time this was deployed to a 512 MB instance: five
+        crashes left eight leases stuck half-ingested and nothing picked them
+        up again.
+        """
+        db = SessionLocal()
+        try:
+            requeue_stranded_jobs(db, older_than_minutes=STRANDED_AFTER_MINUTES)
+        except Exception:
+            logger.exception("could not sweep for stranded jobs")
+        finally:
+            db.close()
+        self._last_sweep = time.monotonic()
+
     def _run(self) -> None:
         poll = get_settings().worker_poll_seconds
+        self._sweep()
         while not self._stop.is_set():
+            if time.monotonic() - self._last_sweep > SWEEP_EVERY_SECONDS:
+                self._sweep()
             db = SessionLocal()
             try:
                 job = claim_next_job(db, self.worker_id)
