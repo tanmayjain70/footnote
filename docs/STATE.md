@@ -28,7 +28,7 @@ _Last updated: 2026-09-13, after the first deployment was verified live._
 | Docs: README, brief, transcript, architecture, deployment, CONTRIBUTING | Done |
 | Git | Feature-sized commits, authored by Tanmay Jain alone; no generated attribution |
 | GitHub | **Private** repository at `tanmayjain70/footnote`, pushed |
-| Deployment | **Live.** Web <https://footnote-web-xgu5.onrender.com>, API <https://footnote-api-uuyv.onrender.com>, database on Neon (`footnote`, pgvector 0.8.0). Provisioned by `scripts/deploy.py`; the generated connection strings are in `api/.env.production.local`, gitignored. Both services live on `0bf0f5f`; live retrieval evaluation: 186 questions, document hit 1.00, page hit 0.943, MRR 0.69 |
+| Deployment | **Live.** Web <https://footnote-web-xgu5.onrender.com>, API <https://footnote-api-uuyv.onrender.com>, database on Neon (`footnote`, pgvector 0.8.0). Provisioned by `scripts/deploy.py`; the generated connection strings are in `api/.env.production.local`, gitignored. Both services live on `de998f1`; live retrieval evaluation: 186 questions, document hit 1.00, page hit 0.943, MRR 0.69 |
 
 ## Measured numbers worth quoting
 
@@ -133,9 +133,12 @@ Three faults that only a 512 MB instance could show, each fixed with a test:
 - **Nothing swept up after the kills.** `requeue_stranded_jobs` existed and
   nothing called it, so eight leases sat in `running` for ever. The worker now
   sweeps at startup and every five minutes.
-- **Render did not deploy commits pushed while the service was suspended.**
-  Two commits sat undeployed after the resume; a manual deploy of `HEAD` fixed
-  it. Check the live commit after any suspend.
+- **Render stopped auto-deploying after the service was suspended.**
+  `autoDeploy` still reads `yes` on both services, yet no push since the resume
+  has started a deploy; each one had to be requested (the Render API, or the
+  dashboard's "Manual Deploy"). The likely cause is the GitHub hook for the
+  private repository, which is configured in Render, not in this code. Until it
+  is fixed, check the live commit after every push.
 - **A half-finished seed looked finished.** The seeder skipped when *any*
   document existed, so the demo would have stayed at eight leases of
   forty-eight. Each stage now skips only its own completed work, and an
