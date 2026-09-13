@@ -1,0 +1,88 @@
+@import 'tailwindcss';
+
+/*
+ * This is a reading tool. Somebody opens it with a lease question, reads an
+ * answer, and then has to decide whether to trust it -- which means finding
+ * the citation, opening the page and checking. The palette serves that second
+ * step more than the first.
+ *
+ * So: a deep teal for the brand and for anything clickable, used sparingly
+ * enough that a citation marker is the most coloured thing in a paragraph;
+ * high-contrast slate for body text, because people read whole clauses here;
+ * amber only for "a person still needs to look at this" (an unreviewed value,
+ * a question the documents could not answer); red only for failures and an
+ * exhausted budget. Tabular figures wherever a rent or a date sits next to
+ * another one.
+ */
+
+@theme {
+  --color-brand-50: oklch(0.97 0.02 195);
+  --color-brand-100: oklch(0.93 0.05 195);
+  --color-brand-200: oklch(0.87 0.08 196);
+  --color-brand-500: oklch(0.58 0.11 200);
+  --color-brand-600: oklch(0.49 0.11 202);
+  --color-brand-700: oklch(0.41 0.1 204);
+  --color-brand-900: oklch(0.27 0.06 206);
+
+  --color-note-50: oklch(0.97 0.03 75);
+  --color-note-100: oklch(0.93 0.08 75);
+  --color-note-200: oklch(0.88 0.12 75);
+  --color-note-600: oklch(0.63 0.15 65);
+  --color-note-700: oklch(0.54 0.14 60);
+  --color-note-800: oklch(0.45 0.12 58);
+
+  --color-bad-50: oklch(0.97 0.02 25);
+  --color-bad-100: oklch(0.93 0.06 25);
+  --color-bad-600: oklch(0.58 0.19 27);
+  --color-bad-700: oklch(0.5 0.18 27);
+  --color-bad-800: oklch(0.42 0.16 27);
+
+  --color-good-50: oklch(0.97 0.02 155);
+  --color-good-100: oklch(0.93 0.06 155);
+  --color-good-600: oklch(0.6 0.13 155);
+  --color-good-700: oklch(0.5 0.12 155);
+  --color-good-800: oklch(0.42 0.1 155);
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-brand-600;
+}
+
+/* Rents, dates, counts. Proportional digits make two numbers impossible to
+   compare at a glance, and the register is a screen of numbers to compare. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The passage a citation points at, on the document page. Amber rather than
+   brand so it reads as "look here", not as something to click. */
+mark {
+  @apply rounded-sm bg-note-100 px-0.5 text-slate-900;
+}
+
+/* The caret at the end of an answer that is still arriving. Put `caret` on the
+   element that holds the last block of text. */
+@keyframes caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.caret::after {
+  content: '';
+  @apply ml-0.5 inline-block h-[1em] w-0.5 translate-y-[0.15em] bg-brand-600 align-baseline;
+  animation: caret-blink 1s steps(1) infinite;
+}
