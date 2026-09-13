@@ -9,7 +9,7 @@ nothing -- not the demo's numbers, which the real seed prints.
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.demo.seed import DEMO_DOMAIN, DEMO_PASSWORD, seed
@@ -115,3 +115,33 @@ def test_the_seeded_viewer_cannot_ask(client: TestClient):
     )
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "forbidden"
+
+
+def test_a_half_finished_seed_is_finished_rather_than_believed(
+    client: TestClient, db: Session
+):
+    """A seeder killed part-way leaves a handful of leases behind. Treating
+    that as "already seeded" is how a demo ends up with eight of forty-eight
+    documents for ever, which is what the first deployment did."""
+    seed(limit=3, extraction=False)
+    # Lose the last document, as a container running out of memory would.
+    victim = db.execute(select(Document).order_by(Document.created_at.desc())).scalars().first()
+    db.execute(delete(Document).where(Document.id == victim.id))
+    db.commit()
+    assert _count(db, Document) == 2
+
+    summary = seed(limit=3, extraction=False)
+
+    assert summary["skipped"] is False, "a partial seed is not a finished one"
+    assert _count(db, Document) == 3
+    assert all(d.status == DocumentStatus.READY for d in db.execute(select(Document)).scalars())
+    # And the stages that had already run did not run twice.
+    questions = db.execute(
+        select(EvalQuestion.expected_document_id).where(
+            EvalQuestion.expected_document_id.is_not(None)
+        )
+    ).scalars()
+    counted: dict[str, int] = {}
+    for document_id in questions:
+        counted[str(document_id)] = counted.get(str(document_id), 0) + 1
+    assert counted and max(counted.values()) <= 4, "one set of golden questions per lease"

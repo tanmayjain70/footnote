@@ -13,8 +13,11 @@ evaluation. The timestamps say so, with enough jitter that no two review
 events share a second -- generated data gives itself away in a screenshot when
 every review landed at 12:00:00.
 
-Idempotent: it does nothing when documents already exist, and ``--force``
-clears everything except the people and the portfolios and builds it again.
+Idempotent, and resumable: it does nothing when the whole corpus is already
+there, carries on from where it stopped when only part of it is -- a seeder
+killed mid-run leaves a handful of leases, and a demo of eight leases that
+believes it is finished is worse than no demo -- and ``--force`` clears
+everything except the people and the portfolios and builds it again.
 """
 
 from __future__ import annotations
@@ -293,9 +296,19 @@ def _golden_set(
     documents: dict[str, Document],
     pages: dict[str, list[str]],
 ) -> tuple[int, int]:
+    already = {
+        document_id
+        for document_id in db.execute(
+            select(EvalQuestion.expected_document_id).where(
+                EvalQuestion.expected_document_id.is_not(None)
+            )
+        ).scalars()
+    }
     answerable = 0
     for spec in specs:
         document = documents[spec.reference]
+        if document.id in already:
+            continue
         for golden in leases.golden_questions(spec, pages[spec.reference]):
             evals.create_question(
                 db,
@@ -325,8 +338,15 @@ def _golden_set(
 
 
 def _extract(db: Session, documents: dict[str, Document], requester: User) -> None:
+    done_already = {
+        document_id
+        for document_id in db.execute(
+            select(Extraction.document_id).where(Extraction.status == ExtractionStatus.DONE)
+        ).scalars()
+    }
     for document in documents.values():
-        extraction.request_extraction(db, document, requester)
+        if document.id not in done_already:
+            extraction.request_extraction(db, document, requester)
     _drain(db, [JobKind.EXTRACT.value])
     db.expire_all()
     done = db.execute(
@@ -775,10 +795,19 @@ def seed(
     db = (db_factory or SessionLocal)()
     try:
         present = _document_count(db)
-        if present and not force:
+        wanted = limit or leases.DEMO_LEASE_COUNT
+        # "Some documents exist" is not "the demo is built". A seeder killed
+        # part-way -- which is what a container running out of memory does --
+        # leaves a handful of leases behind, and treating that as done leaves
+        # a demo with eight leases in it for ever. Every step below is
+        # idempotent (documents dedupe on their bytes, the rest check for
+        # their own rows), so an unfinished seed simply carries on.
+        if present >= wanted and not force:
             log.info("Demo data is already present (%d documents); nothing to do.", present)
             log.info("Re-run with --force to rebuild it.")
             return _summary(db, skipped=True, seconds=time.perf_counter() - started)
+        if present:
+            log.info("Found %d of %d documents; finishing the seed.", present, wanted)
 
         if force:
             with _step("Clearing the previous demo data"):
@@ -804,11 +833,17 @@ def seed(
                 _review(db, specs, documents, people["admin"])
         with _step("Backdating"):
             _backdate(db, specs, documents, clock)
-        with _step("Questions and feedback"):
-            _history(db, specs, people, clock)
-        with _step("Retrieval evaluation"):
-            run = evals.create_run(db, mode=EvalMode.RETRIEVAL, user=people["director"])
-            log.info("  %s: %s", run.status, run.totals or run.error)
+        if db.execute(select(func.count()).select_from(Question)).scalar_one():
+            log.info("Questions and feedback: already asked")
+        else:
+            with _step("Questions and feedback"):
+                _history(db, specs, people, clock)
+        if db.execute(select(func.count()).select_from(EvalRun)).scalar_one():
+            log.info("Retrieval evaluation: already run")
+        else:
+            with _step("Retrieval evaluation"):
+                run = evals.create_run(db, mode=EvalMode.RETRIEVAL, user=people["director"])
+                log.info("  %s: %s", run.status, run.totals or run.error)
 
         summary = _summary(db, skipped=False, seconds=time.perf_counter() - started)
         _print_summary(summary)
