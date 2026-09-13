@@ -1,0 +1,124 @@
+# Render Blueprint -- infrastructure as code for the demo deployment.
+#
+# Import this from the Render dashboard (New > Blueprint) and point it at this
+# repository. Both services are created from this file, so the deployment is
+# reviewable in the repo rather than living only in a dashboard nobody audits.
+#
+# The database is NOT defined here. It lives on Neon, whose free tier does not
+# expire and which ships pgvector, whereas Render's free Postgres is deleted
+# after 30 days -- not a useful property for a portfolio demo that should still
+# work in six months.
+#
+# Setup order matters, because the API refuses to start when it is connected as
+# a privileged role:
+#   1. Create the Neon project.
+#   2. Run scripts/bootstrap-cloud-db.sql in Neon's SQL editor. It creates the
+#      low-privilege application role and the vector extension.
+#   3. Deploy this blueprint and fill in the env vars marked `sync: false`.
+# See docs/deployment.md for the walkthrough.
+
+services:
+  # ------------------------------------------------------------------
+  # API
+  # ------------------------------------------------------------------
+  - type: web
+    name: footnote-api
+    runtime: docker
+    plan: free
+    region: oregon
+    rootDir: api
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # Liveness only: /healthz does not touch Postgres, so a brief database
+    # blip cannot make Render tear down a perfectly healthy container.
+    healthCheckPath: /api/v1/healthz
+
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+
+      # Runtime connection, as the low-privilege footnote_app role created by
+      # scripts/bootstrap-cloud-db.sql. Set by hand -- it holds a password.
+      - key: DATABASE_URL
+        sync: false
+
+      # Migrations only, as the Neon owner role. Also set by hand.
+      - key: DATABASE_ADMIN_URL
+        sync: false
+
+      # Render generates a strong value once and keeps it stable across
+      # deploys. Never commit this or reuse the development secret.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # A JSON array of allowed browser origins, e.g.
+      #   ["https://footnote-web.onrender.com"]
+      # Set after the static site exists and you know its URL.
+      - key: CORS_ORIGINS
+        sync: false
+
+      # Seeds the demo data on start. Idempotent: every later boot finds the
+      # data already there and exits in a second.
+      - key: DEMO_MODE
+        value: "true"
+
+      # Answers come from a hosted model when a key is present, and from the
+      # extractive fallback when it is not. Set LLM_PROVIDER to "anthropic"
+      # and supply the key to switch the demo to real answers; the daily
+      # budget in the app caps what that can cost.
+      - key: LLM_PROVIDER
+        value: stub
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: claude-opus-5
+
+      # Embeddings are computed on this server, never sent anywhere. The
+      # model is baked into the image at build time (see api/Dockerfile) so a
+      # cold start does not download 65 MB.
+      - key: EMBEDDING_PROVIDER
+        value: fastembed
+      - key: FASTEMBED_CACHE_DIR
+        value: /app/.fastembed_cache
+      - key: FASTEMBED_THREADS
+        value: "1"
+
+      - key: WORKER_ENABLED
+        value: "true"
+
+  # ------------------------------------------------------------------
+  # Frontend
+  # ------------------------------------------------------------------
+  - type: web
+    name: footnote-web
+    runtime: static
+    rootDir: web
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+
+    envVars:
+      # Baked in at build time by Vite, so a change here needs a redeploy, not
+      # just a restart. Set to the API's URL plus /api/v1, e.g.
+      #   https://footnote-api.onrender.com/api/v1
+      - key: VITE_API_BASE
+        sync: false
+
+    routes:
+      # Single-page app: every unmatched path must return index.html so React
+      # Router can handle it. Without this, deep links and a browser refresh on
+      # any route other than / return 404 from the static host.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
