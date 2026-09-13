@@ -1,0 +1,23 @@
+# The Dockerfile does `COPY . .`, so anything not excluded here goes into the
+# image. .venv alone is a few hundred megabytes of Linux-incompatible Windows
+# wheels -- copying it in would bloat the image and shadow the packages pip
+# installed inside the container.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+.env
+.env.*
+!.env.example
+
+# The image downloads its own copy of the embedding model at build time.
+.fastembed_cache/
+
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+tests/
