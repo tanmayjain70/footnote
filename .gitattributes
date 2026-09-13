@@ -1,0 +1,9 @@
+# Shell scripts must keep LF endings even when checked out on Windows.
+# A CRLF entrypoint fails inside a Linux container with the memorable and
+# entirely unhelpful error "exec /app/docker-entrypoint.sh: no such file or
+# directory" -- the missing file is the interpreter, because the shebang line
+# ends in a stray carriage return.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
