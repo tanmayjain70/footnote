@@ -1,0 +1,23 @@
+[project]
+name = "footnote-api"
+version = "0.1.0"
+description = "Cited answers over a property firm's leases, and an honest refusal when the evidence is not there."
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008"]  # FastAPI's Depends() in defaults is the documented idiom.
+
+[tool.ruff.lint.per-file-ignores]
+# Migrations are machine-written by `alembic revision --autogenerate` and
+# reformatting them by hand makes the next regeneration a noisy diff.
+"alembic/versions/*" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["error::DeprecationWarning:app.*"]
