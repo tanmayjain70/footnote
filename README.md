@@ -243,7 +243,7 @@ api/
     routers/         FastAPI, thin
     demo/            the lease generator and the seed
   alembic/           one migration, reversible
-  tests/             323 tests against a real PostgreSQL with pgvector
+  tests/             325 tests against a real PostgreSQL with pgvector
 web/
   src/pages/         ask · documents · document · register · evals · usage
 samples/             three generated leases, committed on purpose
@@ -316,7 +316,7 @@ expect a few minutes the first time. Answers use the extractive stub unless
 
 ```
 cd api
-.venv\Scripts\pytest               rem  323 tests against footnote_test, 96% coverage
+.venv\Scripts\pytest               rem  325 tests against footnote_test, 96% coverage
 .venv\Scripts\ruff check .
 ```
 

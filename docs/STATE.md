@@ -3,7 +3,7 @@
 A handover document. A new session should be able to read this and continue
 without re-deriving anything. Update it in the same commit as the work.
 
-_Last updated: 2026-09-13, after the first deployment._
+_Last updated: 2026-09-13, after the first deployment was verified live._
 
 ## Status: milestone 1 built, tested, and deployed
 
@@ -21,14 +21,14 @@ _Last updated: 2026-09-13, after the first deployment._
 | Evaluation harness (retrieval and end-to-end runs, golden set, from-feedback) | Done |
 | Lease generator, golden questions, field registry, three committed samples | Done. 48 leases, 524 pages, 1,728 chunks, 174 + 12 golden questions |
 | Demo seed | Done; runs in 3m48s with fastembed; idempotent |
-| **Whole API suite** | **328 passed, 96% line coverage**, about six minutes against footnote_test |
-| Smoke test against a live seeded server | **28 of 28** (`scripts/smoke-test.ps1`) |
-| Web: all seven pages | Done, typechecks and builds; driven in a real browser (Playwright script at `../portfolio-shots/scripts/footnote.js`): sign-in, documents, document detail, a cited answer, a refusal, register, evals, usage, viewer restrictions — clean |
-| CI, Docker image, Render blueprint, bootstrap scripts | Exercised: CI runs on every push, the image builds on Render, the blueprint and `deploy.py` both provision the live demo |
+| **Whole API suite** | **325 passed** of 325 collected, 96% line coverage, 6m06s against footnote_test; the full suite also passes in CI on `0bf0f5f` |
+| Smoke test (`scripts/smoke-test.ps1`) | **28 of 28** locally, and **28 of 28 against the deployed API** on commit `0bf0f5f` |
+| Web: all seven pages | Done, typechecks and builds; driven in a real browser (Playwright script at `../portfolio-shots/scripts/footnote.js`): sign-in, documents, document detail, a cited answer, a refusal, register, evals, usage, viewer restrictions — clean locally and against the live site |
+| CI, Docker image, deploy script, bootstrap scripts | Exercised: CI runs the full suite on every push, the image builds on Render, and `scripts/deploy.py` provisioned the live demo. `render.yaml` describes the same services but has not been imported |
 | Docs: README, brief, transcript, architecture, deployment, CONTRIBUTING | Done |
-| Git | 26 commits, feature-sized, authored by Tanmay Jain alone |
+| Git | Feature-sized commits, authored by Tanmay Jain alone; no generated attribution |
 | GitHub | **Private** repository at `tanmayjain70/footnote`, pushed |
-| Deployment | **Live.** Web <https://footnote-web-xgu5.onrender.com>, API <https://footnote-api-uuyv.onrender.com>, database on Neon (`footnote`, pgvector 0.8.0). Provisioned by `scripts/deploy.py`; the generated connection strings are in `api/.env.production.local`, gitignored |
+| Deployment | **Live.** Web <https://footnote-web-xgu5.onrender.com>, API <https://footnote-api-uuyv.onrender.com>, database on Neon (`footnote`, pgvector 0.8.0). Provisioned by `scripts/deploy.py`; the generated connection strings are in `api/.env.production.local`, gitignored. Both services live on `0bf0f5f`; live retrieval evaluation: 186 questions, document hit 1.00, page hit 0.943, MRR 0.69 |
 
 ## Measured numbers worth quoting
 
@@ -125,10 +125,17 @@ Three faults that only a 512 MB instance could show, each fixed with a test:
 - **Two copies of the embedding model.** The container entrypoint seeded in a
   second process, so two processes each held ~270 MB of model against a 512 MB
   limit. Render killed the pair five times over. The application seeds on a
-  thread now: one process, one model, ~270 MB serving and ~400 MB seeding.
+  thread now: one process, one model. Serving measured ~270 MB. **Bulk ingestion
+  in that one process is still marginal on 512 MB**: Render killed it once more
+  (06:38 UTC) while it re-ingested eight recovered leases. The live corpus was
+  therefore seeded from a workstation against Neon, which is the reliable path.
+  A single upload ingests fine live (the smoke test does one).
 - **Nothing swept up after the kills.** `requeue_stranded_jobs` existed and
   nothing called it, so eight leases sat in `running` for ever. The worker now
   sweeps at startup and every five minutes.
+- **Render did not deploy commits pushed while the service was suspended.**
+  Two commits sat undeployed after the resume; a manual deploy of `HEAD` fixed
+  it. Check the live commit after any suspend.
 - **A half-finished seed looked finished.** The seeder skipped when *any*
   document existed, so the demo would have stayed at eight leases of
   forty-eight. Each stage now skips only its own completed work, and an
@@ -140,10 +147,13 @@ Three faults that only a 512 MB instance could show, each fixed with a test:
   shape and event parsing are tested against a fake server speaking the
   documented SSE format; the document-block schema has not been validated by
   the real endpoint.
-- Render free-tier memory with fastembed loaded. Expected to fit in 512 MB with
-  one thread; unmeasured.
-- The Docker image build, the CI workflow and the Render blueprint have not been
-  run (nothing has been pushed).
+- Bulk ingestion (many uploads at once) on the free instance. Serving and a
+  single upload are verified live; ingesting several leases concurrently was
+  killed for memory once. Lowering `EMBED_BATCH` might help but is unmeasured on
+  Linux, so it has not been changed. The honest options are seeding from a
+  workstation, or the 2 GB instance tier.
+- `render.yaml` as a Blueprint import. The live services were created by
+  `scripts/deploy.py` through the API, not by importing the blueprint.
 - Visual layout was checked in screenshots at 1440×1080 only.
 
 ## Known limitations worth stating in a conversation

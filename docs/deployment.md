@@ -86,8 +86,24 @@ finds the data present and the thread returns immediately.
 difference. The container entrypoint used to start `python -m app.demo.seed`
 in the background, which loads its own copy of the embedding model: about
 270 MB resident, twice, against a 512 MB limit. Render killed it, restarted it,
-and killed it again. One process holding one model serves in about 270 MB and
-seeds in roughly 400 MB, which fits.
+and killed it again. One process holding one model serves in about 270 MB.
+
+Seeding in that one process is still marginal on 512 MB. On the first deploy
+Render killed it once more while it re-ingested eight leases at a stretch, so
+the reliable way to fill a free instance is from your own machine, straight
+into Neon, with the same embedding model:
+
+```
+cd api
+rem  DATABASE_URL and DATABASE_ADMIN_URL from api\.env.production.local
+set EMBEDDING_PROVIDER=fastembed
+.venv\Scripts\python -m app.demo.seed
+```
+
+The seed is resumable, so a boot-time seed that is killed part-way finishes on
+the next boot rather than leaving a partial corpus behind; running it from a
+workstation just gets there without the restarts. A single upload ingests
+comfortably on the live instance.
 
 ## 3. The frontend
 
