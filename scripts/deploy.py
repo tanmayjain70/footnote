@@ -280,6 +280,17 @@ def create_web_service(token: str, owner_id: str, api_base: str) -> dict[str, An
             token,
             env_vars({"VITE_API_BASE": api_base}),
         )
+        # Vite reads this at build time and writes the value into the bundle,
+        # so changing the variable changes nothing until something rebuilds.
+        # A service that already existed has a bundle pointing at whatever the
+        # API's address was last time.
+        call(
+            "POST",
+            f"{RENDER_API}/services/{existing['id']}/deploys",
+            token,
+            {"clearCache": "do_not_clear"},
+        )
+        detail("rebuilding it so the new API address is in the bundle")
         return existing
 
     created = call(
