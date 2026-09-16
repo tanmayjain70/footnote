@@ -27,7 +27,7 @@ _Last updated: 2026-09-13, after the first deployment was verified live._
 | CI, Docker image, deploy script, bootstrap scripts | Exercised: CI runs the full suite on every push, the image builds on Render, and `scripts/deploy.py` provisioned the live demo. `render.yaml` describes the same services but has not been imported |
 | Docs: README, brief, transcript, architecture, deployment, CONTRIBUTING | Done |
 | Git | Feature-sized commits, authored by Tanmay Jain alone; no generated attribution |
-| GitHub | **Private** repository at `tanmayjain70/footnote`, pushed |
+| GitHub | **Public** repository at `tanmayjain70/footnote`, pushed. Private until 2026-09-16; the history was checked for keys and live connection strings before it was opened |
 | Deployment | **Live.** Web <https://footnote-web-xgu5.onrender.com>, API <https://footnote-api-uuyv.onrender.com>, database on Neon (`footnote`, pgvector 0.8.0). Provisioned by `scripts/deploy.py`; the generated connection strings are in `api/.env.production.local`, gitignored. Both services live on `de998f1`; live retrieval evaluation: 186 questions, document hit 1.00, page hit 0.943, MRR 0.69 |
 
 ## Measured numbers worth quoting
